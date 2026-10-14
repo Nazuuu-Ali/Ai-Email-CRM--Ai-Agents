@@ -1,0 +1,335 @@
+{
+  "name": "Gmail agent",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this incoming email and return JSON format only:\n\nSubject: {{ $json.subject }}\nBody: {{ $json.snippet }}\n\nRequired JSON format:\n{\n  \"intent\": \"Sales Inquiry / Support / General\",\n  \"urgency\": \"High / Medium / Low\",\n  \"summary\": \"Short summary\",\n  \"suggested_reply\": \"Professional draft reply\"\n}",
+        "options": {
+          "systemMessage": "=You are an advanced enterprise AI Email Classification & Response Agent.\n\nAnalyze the incoming email provided below and output ONLY a valid JSON object.\n\nEmail Subject: {{ $json.subject || \"No Subject\" }}\nEmail Body: {{ $json.textAsSimple || $json.snippet || \"No Content\" }}\n\nOutput format:\n{\n  \"intent\": \"Sales Inquiry | Support | Refund | General / Spam\",\n  \"urgency\": \"High | Medium | Low\",\n  \"sentiment\": \"Positive | Neutral | Negative\",\n  \"summary\": \"Concise 1-sentence summary of the email\",\n  \"suggested_reply\": \"Write a professional, helpful, and concise response to the customer.\"\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -320,
+        -208
+      ],
+      "id": "7bf65a43-259f-48ea-a2fb-73281823c998",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -560,
+        -208
+      ],
+      "id": "afb5f892-667b-4a19-ae66-a03e85e9c1bd",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oHEvESjjPS381saA",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  // AI Agent ka raw output retrieve karna\n  let rawOutput = $input.first().json.output || \"\";\n\n  // Markdown code blocks ko clean karna (```json ... ``` ko remove karna)\n  let cleanJsonString = rawOutput\n    .replace(/^```json\\s*/i, \"\")\n    .replace(/^```\\s*/i, \"\")\n    .replace(/\\s*```$/, \"\")\n    .trim();\n\n  // JSON parse karna\n  const parsedData = JSON.parse(cleanJsonString);\n\n  return [{\n    json: {\n      intent: parsedData.intent || \"General\",\n      urgency: parsedData.urgency || \"Medium\",\n      sentiment: parsedData.sentiment || \"Neutral\",\n      summary: parsedData.summary || \"No summary provided\",\n      suggested_reply: parsedData.suggested_reply || \"Thank you for reaching out.\"\n    }\n  }];\n} catch (error) {\n  // Graceful fallback agar parsing fail ho jaye\n  return [{\n    json: {\n      intent: \"General\",\n      urgency: \"Medium\",\n      sentiment: \"Neutral\",\n      summary: \"Parsing Error\",\n      suggested_reply: \"Thank you for reaching out.\"\n    }\n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        80
+      ],
+      "id": "265b97ee-a358-4fd1-9212-648bf8a8e241",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ $('Gmail Trigger').item.json.Subject }}",
+        "message": "={{ $json.suggested_reply }}",
+        "options": {
+          "threadId": "={{ $('Gmail Trigger').item.json.threadId }}",
+          "sendTo": "={{ $('Gmail Trigger').item.json.From }}"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        128,
+        -176
+      ],
+      "id": "ad1269e4-5eb7-472a-93b4-e6fa8e95feb0",
+      "name": "Create a draft",
+      "webhookId": "57759c04-4c06-4e38-9686-8de69da3967b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oHEvESjjPS381saA",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "email_logs",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "sender_email",
+              "fieldValue": "={{ $('Gmail Trigger').item.json.From }}"
+            },
+            {
+              "fieldId": "subject",
+              "fieldValue": "={{ $('Gmail Trigger').item.json.Subject }}"
+            },
+            {
+              "fieldId": "intent",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.intent }}"
+            },
+            {
+              "fieldId": "urgency",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.urgency }}"
+            },
+            {
+              "fieldId": "sentiment",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.urgency }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.summary }}"
+            },
+            {
+              "fieldId": "suggested_reply",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.suggested_reply }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        128,
+        176
+      ],
+      "id": "74860045-828c-4a16-abac-803698728c77",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "OQ8CiFr6gxS7eOjB",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "834e93c1-11ad-4e65-b387-41a01a2d715f",
+              "leftValue": "={{ $('Code in JavaScript').item.json.urgency }}",
+              "rightValue": "High",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        368,
+        32
+      ],
+      "id": "87bb2d81-f546-43f3-983d-3f2061daac21",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ultramsg.com/YOUR_INSTANCE_ID/messages/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"token\": \"YOUR_ULTRAMSG_TOKEN\",\n  \"to\": \"YOUR_PHONE_NUMBER\",\n  \"body\": \"🚨 URGENT EMAIL ALERT!\\n\\nFrom: {{ $('Gmail Trigger').item.json.From }}\\nSubject:{{ $('Gmail Trigger').item.json.Subject }}\\nSummary: {{ $('Code in JavaScript').item.json.summary }}\\n\\nAction required immediately!\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        576,
+        -192
+      ],
+      "id": "751790e0-374d-4266-b996-9e564939bc24",
+      "name": "HTTP Request",
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.sender_email }}",
+        "subject": "=Re: {{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.suggested_reply }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        80
+      ],
+      "id": "07fe504e-1afb-4e92-bdc7-4a63e3dc614c",
+      "name": "Send a message",
+      "webhookId": "0ee4eacd-0e03-4c14-9b6e-d34b96669af3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oHEvESjjPS381saA",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "allam-2-7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        0
+      ],
+      "id": "3f538c0d-9a56-4c1f-91f8-2ded1455fe93",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "iuluo73sifbPn8VA",
+          "name": "Groq account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create a draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a draft": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "0d0c0873-2950-4e05-a285-4d06b483de08",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "33067ee8d6672ca14736d851d51e4236ea4ea4bfe1b0d93fdd21a765aaa30cae"
+  },
+  "nodeGroups": [],
+  "id": "mhJWn078CtCI22ZU",
+  "tags": []
+}
